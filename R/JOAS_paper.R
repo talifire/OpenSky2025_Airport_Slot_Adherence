@@ -1,14 +1,9 @@
 #### LIBRARIES  ####
+library(conflicted)
+library(tidyverse)
 library(readxl)
-library(dplyr)
-library(purrr)
-library(stringr)
-library(lubridate)
-library(ggplot2)
 library(ggridges)
 library(scales)
-library(tidyr)
-library(tidyverse)
 library(eurocontrol)
 library(jsonlite)
 library(withr)
@@ -22,7 +17,7 @@ library(patchwork)
 library(zoo)
 library(broom)
 library(caret)
-library(factoextra)  # for clustering visualization
+library(factoextra) # for clustering visualization
 library(randomForest)
 library(cluster)
 library(janitor)
@@ -30,10 +25,14 @@ library(ranger)
 library(tidyverse)
 library(pROC)
 library(doParallel)
+library(here)
 
 #### Descriptive statistics ####
 
-ds <- read_csv("C:/Users/talifire/dev/repos/airport_slot_adherence/data/JOAS.csv")
+# source("R/helpers.R")
+
+ds <- here("data-raw", "JOAS.csv") |>
+  read_csv()
 
 selected_airports <- c("LTFM", "EIDW", "LGAV", "EDDF", "EGLL", "EKCH")
 
@@ -51,11 +50,15 @@ compute_intervals <- function(df, time_col) {
   df |>
     arrange(!!sym(time_col)) |>
     mutate(
-      INTERVAL_MIN = as.numeric(difftime(!!sym(time_col), lag(!!sym(time_col)), units = "mins"))
+      INTERVAL_MIN = as.numeric(difftime(
+        !!sym(time_col),
+        lag(!!sym(time_col)),
+        units = "mins"
+      ))
     ) |>
     summarise(
       MEDIAN_INTERVAL = median(INTERVAL_MIN, na.rm = TRUE),
-      MEAN_INTERVAL   = mean(INTERVAL_MIN, na.rm = TRUE)
+      MEAN_INTERVAL = mean(INTERVAL_MIN, na.rm = TRUE)
     ) |>
     mutate(METRIC = time_col)
 }
@@ -64,35 +67,48 @@ metrics <- c("FIRST_SUBMITTED", "FIRST_ACCEPTED", "SLOT_TIME", "BLOCK_TIME")
 
 summary_table <- daily_counts |>
   group_by(AIRPORT, PHASE) |>
-  group_modify(~ bind_rows(lapply(metrics, function(m) compute_intervals(.x, m)))) |>
+  group_modify(
+    ~ bind_rows(lapply(metrics, function(m) compute_intervals(.x, m)))
+  ) |>
   ungroup() |>
   select(AIRPORT, PHASE, METRIC, MEDIAN_INTERVAL, MEAN_INTERVAL)
 
 # --- 4. Nicely formatted summary table ---
 summary_table |>
   arrange(AIRPORT, PHASE, METRIC) |>
-  knitr::kable(digits = 2, caption = "Median and Mean Intervals (Minutes) per Airport and Phase")
+  knitr::kable(
+    digits = 2,
+    caption = "Median and Mean Intervals (Minutes) per Airport and Phase"
+  )
 
 
 metric_labels <- c(
   FIRST_SUBMITTED = "Submitted (Airlines)",
-  FIRST_ACCEPTED  = "Accepted (NM)",
-  SLOT_TIME       = "Planned (Slot)",
-  ACTUAL          = "Operated (Actual)"
+  FIRST_ACCEPTED = "Accepted (NM)",
+  SLOT_TIME = "Planned (Slot)",
+  ACTUAL = "Operated (Actual)"
 )
 
 summary_table_plot <- summary_table |>
   mutate(
     METRIC = fct_recode(factor(METRIC), !!!metric_labels),
-    PHASE  = if_else(PHASE == "ARR", "Arrival", "Departure")
+    PHASE = if_else(PHASE == "ARR", "Arrival", "Departure")
   )
 
 ggplot(summary_table_plot, aes(x = METRIC, y = MEAN_INTERVAL, fill = PHASE)) +
   geom_col(position = position_dodge(width = 0.8), alpha = 0.8) +
-  geom_point(aes(y = MEDIAN_INTERVAL, color = PHASE), position = position_dodge(width = 0.8), size = 3) +
+  geom_point(
+    aes(y = MEDIAN_INTERVAL, color = PHASE),
+    position = position_dodge(width = 0.8),
+    size = 3
+  ) +
   facet_wrap(~AIRPORT, ncol = 3) +
-  scale_fill_manual(values = c("Arrival" = "#1b9e77", "Departure" = "#d95f02")) +
-  scale_color_manual(values = c("Arrival" = "#1b9e77", "Departure" = "#d95f02")) +
+  scale_fill_manual(
+    values = c("Arrival" = "#1b9e77", "Departure" = "#d95f02")
+  ) +
+  scale_color_manual(
+    values = c("Arrival" = "#1b9e77", "Departure" = "#d95f02")
+  ) +
   labs(
     title = "Median and Mean Intervals Between Flights (by Airport & Phase)",
     x = "Flight Stage",
@@ -109,7 +125,6 @@ ggplot(summary_table_plot, aes(x = METRIC, y = MEAN_INTERVAL, fill = PHASE)) +
     plot.title = element_text(face = "bold")
   )
 ggsave("intervals.png", width = 16, height = 9, dpi = 600)
-
 
 
 delay_data <- ds |>
@@ -150,17 +165,24 @@ ggplot(
   aes(x = DELAY_MIN)
 ) +
   geom_histogram(
-    binwidth = 2, fill = "#1b9e77", alpha = 0.6, color = "white"
+    binwidth = 2,
+    fill = "#1b9e77",
+    alpha = 0.6,
+    color = "white"
   ) +
   geom_vline(
     data = percentile_summary |> filter(PHASE == "ARR"),
     aes(xintercept = MIN_DELAY_10TH),
-    color = "blue", linetype = "dashed", size = 1
+    color = "blue",
+    linetype = "dashed",
+    size = 1
   ) +
   geom_vline(
     data = percentile_summary |> filter(PHASE == "ARR"),
     aes(xintercept = MAX_DELAY_90TH),
-    color = "red", linetype = "dashed", size = 1
+    color = "red",
+    linetype = "dashed",
+    size = 1
   ) +
   facet_wrap(~AIRPORT, scales = "free_y", ncol = 3) +
   labs(
@@ -182,17 +204,24 @@ ggplot(
   aes(x = DELAY_MIN)
 ) +
   geom_histogram(
-    binwidth = 2, fill = "#d95f02", alpha = 0.6, color = "white"
+    binwidth = 2,
+    fill = "#d95f02",
+    alpha = 0.6,
+    color = "white"
   ) +
   geom_vline(
     data = percentile_summary |> filter(PHASE == "DEP"),
     aes(xintercept = MIN_DELAY_10TH),
-    color = "blue", linetype = "dashed", size = 1
+    color = "blue",
+    linetype = "dashed",
+    size = 1
   ) +
   geom_vline(
     data = percentile_summary |> filter(PHASE == "DEP"),
     aes(xintercept = MAX_DELAY_90TH),
-    color = "red", linetype = "dashed", size = 1
+    color = "red",
+    linetype = "dashed",
+    size = 1
   ) +
   facet_wrap(~AIRPORT, scales = "free_y", ncol = 3) +
   labs(
@@ -251,12 +280,28 @@ percentile_summary <- delay_data_clean |>
 
 make_airport_plot <- function(airport, phase_color, phase_label) {
   dat <- delay_data_clean |> filter(AIRPORT == airport, PHASE == phase_label)
-  percs <- percentile_summary |> filter(AIRPORT == airport, PHASE == phase_label)
+  percs <- percentile_summary |>
+    filter(AIRPORT == airport, PHASE == phase_label)
 
   ggplot(dat, aes(x = DELAY_MIN)) +
-    geom_histogram(binwidth = 2, fill = phase_color, alpha = 0.6, color = "white") +
-    geom_vline(aes(xintercept = percs$MIN_DELAY_10TH), color = "blue", linetype = "dashed", size = 1.2) +
-    geom_vline(aes(xintercept = percs$MAX_DELAY_90TH), color = "red", linetype = "dashed", size = 1.2) +
+    geom_histogram(
+      binwidth = 2,
+      fill = phase_color,
+      alpha = 0.6,
+      color = "white"
+    ) +
+    geom_vline(
+      aes(xintercept = percs$MIN_DELAY_10TH),
+      color = "blue",
+      linetype = "dashed",
+      size = 1.2
+    ) +
+    geom_vline(
+      aes(xintercept = percs$MAX_DELAY_90TH),
+      color = "red",
+      linetype = "dashed",
+      size = 1.2
+    ) +
     labs(
       title = airport,
       x = NULL,
@@ -270,11 +315,21 @@ make_airport_plot <- function(airport, phase_color, phase_label) {
     )
 }
 
-arrivals_plots <- lapply(selected_airports, make_airport_plot, phase_color = "#1b9e77", phase_label = "ARR")
-departures_plots <- lapply(selected_airports, make_airport_plot, phase_color = "#d95f02", phase_label = "DEP")
+arrivals_plots <- lapply(
+  selected_airports,
+  make_airport_plot,
+  phase_color = "#1b9e77",
+  phase_label = "ARR"
+)
+departures_plots <- lapply(
+  selected_airports,
+  make_airport_plot,
+  phase_color = "#d95f02",
+  phase_label = "DEP"
+)
 
 combined_plot <- (wrap_plots(arrivals_plots, ncol = 6) /
-                    wrap_plots(departures_plots, ncol = 6)) +
+  wrap_plots(departures_plots, ncol = 6)) +
   plot_annotation(
     title = "Distribution of Flight Delays per Airport",
     subtitle = "Top: Arrivals (green), Bottom: Departures (orange)\nDashed blue = 10th percentile, red = 90th percentile",
@@ -308,22 +363,32 @@ allowed_buffer <- percentile_summary |>
   transmute(
     AIRPORT,
     PHASE,
-    BUFFER_START_MIN = MIN_DELAY_10TH,            # 10th percentile (may be negative)
-    BUFFER_END_MIN   = MAX_DELAY_90TH             # 90th percentile (positive -> delayed)
+    BUFFER_START_MIN = MIN_DELAY_10TH, # 10th percentile (may be negative)
+    BUFFER_END_MIN = MAX_DELAY_90TH # 90th percentile (positive -> delayed)
   ) |>
   arrange(AIRPORT, PHASE) |>
   # add CDM flag
   mutate(
     CDM = if_else(AIRPORT %in% cdm_airports, "CDM", "non-CDM"),
     # pretty text for PPTX (e.g. "-9" and "+47")
-    BUFFER_START_TEXT = paste0(ifelse(BUFFER_START_MIN > 0, "+", ""), round(BUFFER_START_MIN, 1)),
-    BUFFER_END_TEXT   = paste0(ifelse(BUFFER_END_MIN > 0, "+", ""), round(BUFFER_END_MIN, 1), " min")
+    BUFFER_START_TEXT = paste0(
+      ifelse(BUFFER_START_MIN > 0, "+", ""),
+      round(BUFFER_START_MIN, 1)
+    ),
+    BUFFER_END_TEXT = paste0(
+      ifelse(BUFFER_END_MIN > 0, "+", ""),
+      round(BUFFER_END_MIN, 1),
+      " min"
+    )
   )
 
 allowed_buffer_pptx <- allowed_buffer |>
   select(AIRPORT, PHASE, BUFFER_START_TEXT, BUFFER_END_TEXT, CDM)
 
-kable(allowed_buffer_pptx, col.names = c("Airport", "Phase", "Buffer start", "Buffer end", "Group"))
+kable(
+  allowed_buffer_pptx,
+  col.names = c("Airport", "Phase", "Buffer start", "Buffer end", "Group")
+)
 
 group_summary <- allowed_buffer |>
   group_by(CDM, PHASE) |>
@@ -337,8 +402,18 @@ group_summary <- allowed_buffer |>
   ) |>
   arrange(CDM, PHASE)
 
-kable(group_summary, col.names = c("Group", "Phase", "N", "Mean start (min)", "Median start (min)",
-                                   "Mean end (min)", "Median end (min)"))
+kable(
+  group_summary,
+  col.names = c(
+    "Group",
+    "Phase",
+    "N",
+    "Mean start (min)",
+    "Median start (min)",
+    "Mean end (min)",
+    "Median end (min)"
+  )
+)
 
 
 # --- EDDF capacity test ---
@@ -349,8 +424,10 @@ capacity_ref <- data.frame(
 )
 
 eddf_data <- ds |>
-  filter((ADEP == airport_target & PHASE == "DEP") |
-           (ADES == airport_target & PHASE == "ARR")) |>
+  filter(
+    (ADEP == airport_target & PHASE == "DEP") |
+      (ADES == airport_target & PHASE == "ARR")
+  ) |>
   mutate(
     AIRPORT = airport_target
   )
@@ -358,31 +435,30 @@ eddf_data <- ds |>
 make_binned_counts <- function(data, time_col, window_minutes) {
   data |>
     mutate(
-      TIME_BIN = floor_date(!!sym(time_col), unit = paste0(window_minutes, " minutes"))
+      TIME_BIN = floor_date(
+        !!sym(time_col),
+        unit = paste0(window_minutes, " minutes")
+      )
     ) |>
     group_by(TIME_BIN) |>
     summarise(FLIGHTS = n(), .groups = "drop") |>
     mutate(WINDOW = paste0(window_minutes, "min"))
 }
 
-slot_10  <- make_binned_counts(eddf_data, "SLOT_TIME", 10)
+slot_10 <- make_binned_counts(eddf_data, "SLOT_TIME", 10)
 block_10 <- make_binned_counts(eddf_data, "BLOCK_TIME", 10)
 
 slot_30 <- slot_10 |>
-  mutate(FLIGHTS = FLIGHTS * 3,
-         WINDOW = "30min")
+  mutate(FLIGHTS = FLIGHTS * 3, WINDOW = "30min")
 
 slot_60 <- slot_10 |>
-  mutate(FLIGHTS = FLIGHTS * 6,
-         WINDOW = "60min")
+  mutate(FLIGHTS = FLIGHTS * 6, WINDOW = "60min")
 
 block_30 <- block_10 |>
-  mutate(FLIGHTS = FLIGHTS * 3,
-         WINDOW = "30min")
+  mutate(FLIGHTS = FLIGHTS * 3, WINDOW = "30min")
 
 block_60 <- block_10 |>
-  mutate(FLIGHTS = FLIGHTS * 6,
-         WINDOW = "60min")
+  mutate(FLIGHTS = FLIGHTS * 6, WINDOW = "60min")
 
 
 slot_all <- bind_rows(slot_10, slot_30, slot_60) |> mutate(TYPE = "SLOT")
@@ -390,15 +466,22 @@ block_all <- bind_rows(block_10, block_30, block_60) |> mutate(TYPE = "BLOCK")
 plot_data <- bind_rows(slot_all, block_all)
 
 plot_data_daily <- plot_data |>
-  mutate(HOUR = hour(TIME_BIN) + minute(TIME_BIN)/60) |>
+  mutate(HOUR = hour(TIME_BIN) + minute(TIME_BIN) / 60) |>
   group_by(TYPE, WINDOW, HOUR) |>
   summarise(MEDIAN_FLIGHTS = median(FLIGHTS, na.rm = TRUE), .groups = "drop")
 
 # Base EDDF capacity and observed pattern ---
-ggplot(plot_data_daily, aes(x = HOUR, y = MEDIAN_FLIGHTS, color = WINDOW, linetype = TYPE)) +
+ggplot(
+  plot_data_daily,
+  aes(x = HOUR, y = MEDIAN_FLIGHTS, color = WINDOW, linetype = TYPE)
+) +
   geom_line(size = 0.8) +
-  geom_hline(data = capacity_ref, aes(yintercept = capacity, color = paste0(window, "min")),
-             linetype = "dotted", size = 1) +
+  geom_hline(
+    data = capacity_ref,
+    aes(yintercept = capacity, color = paste0(window, "min")),
+    linetype = "dotted",
+    size = 1
+  ) +
   scale_color_manual(
     values = c("10min" = "green3", "30min" = "orange", "60min" = "steelblue"),
     name = "Window size"
@@ -436,17 +519,39 @@ time_seq <- seq(
 sim_counts <- tibble(TIME_BIN = time_seq) |>
   rowwise() |>
   mutate(
-    FLIGHTS = sum(simulated$SLOT_LOWER <= TIME_BIN & simulated$SLOT_UPPER >= TIME_BIN, na.rm = TRUE)
+    FLIGHTS = sum(
+      simulated$SLOT_LOWER <= TIME_BIN & simulated$SLOT_UPPER >= TIME_BIN,
+      na.rm = TRUE
+    )
   ) |>
   ungroup() |>
-  mutate(WINDOW = "10min", TYPE = "Simulated", HOUR = hour(TIME_BIN) + minute(TIME_BIN)/60)
+  mutate(
+    WINDOW = "10min",
+    TYPE = "Simulated",
+    HOUR = hour(TIME_BIN) + minute(TIME_BIN) / 60
+  )
 
 # Impact with tolerance window ---
 ggplot(sim_counts, aes(x = HOUR, y = FLIGHTS)) +
   geom_line(color = "#080", size = 1.3) +
-  geom_hline(yintercept = capacity_ref$capacity[1], color = "green3", linetype = "dotted", size = 1) +
-  geom_hline(yintercept = capacity_ref$capacity[2], color = "orange", linetype = "dotted", size = 1) +
-  geom_hline(yintercept = capacity_ref$capacity[3], color = "steelblue", linetype = "dotted", size = 1) +
+  geom_hline(
+    yintercept = capacity_ref$capacity[1],
+    color = "green3",
+    linetype = "dotted",
+    size = 1
+  ) +
+  geom_hline(
+    yintercept = capacity_ref$capacity[2],
+    color = "orange",
+    linetype = "dotted",
+    size = 1
+  ) +
+  geom_hline(
+    yintercept = capacity_ref$capacity[3],
+    color = "steelblue",
+    linetype = "dotted",
+    size = 1
+  ) +
   scale_x_continuous(breaks = 1:24, limits = c(1, 24)) +
   labs(
     title = "EDDF Capacity Stress Test (Assumed ± Window on Slot)",
@@ -472,20 +577,33 @@ data <- data |>
   mutate(
     AIRPORT = if_else(PHASE == "DEP", ADEP, ADES),
     # compute minutes since midnight for relevant times where possible
-    SLOT_min = as.numeric(difftime(SLOT_TIME, floor_date(SLOT_TIME, "day"), units = "mins")),
-    BLOCK_min = as.numeric(difftime(BLOCK_TIME, floor_date(BLOCK_TIME, "day"), units = "mins")),
-    ACT_min = as.numeric(difftime(ACTUAL, floor_date(ACTUAL, "day"), units = "mins"))
+    SLOT_min = as.numeric(difftime(
+      SLOT_TIME,
+      floor_date(SLOT_TIME, "day"),
+      units = "mins"
+    )),
+    BLOCK_min = as.numeric(difftime(
+      BLOCK_TIME,
+      floor_date(BLOCK_TIME, "day"),
+      units = "mins"
+    )),
+    ACT_min = as.numeric(difftime(
+      ACTUAL,
+      floor_date(ACTUAL, "day"),
+      units = "mins"
+    ))
   )
 
 data <- data |>
   mutate(DEV_MIN = as.numeric(difftime(BLOCK_TIME, SLOT_TIME, units = "mins")))
 
 cdm_airports <- c("EDDF", "EGLL", "EKCH")
-data <- data |> mutate(CDM = if_else(AIRPORT %in% cdm_airports, "CDM", "non-CDM"))
+data <- data |>
+  mutate(CDM = if_else(AIRPORT %in% cdm_airports, "CDM", "non-CDM"))
 
 #ACCEPTED deviations
 #Change to outliers and 80%
-if(!"ACCEPTED" %in% names(data)) {
+if (!"ACCEPTED" %in% names(data)) {
   airport_bounds <- data |>
     filter(!is.na(DEV_MIN)) |>
     group_by(AIRPORT) |>
@@ -494,7 +612,8 @@ if(!"ACCEPTED" %in% names(data)) {
       p90 = quantile(DEV_MIN, 0.85, na.rm = TRUE),
       .groups = "drop"
     )
-  data <- data |> left_join(airport_bounds, by = "AIRPORT") |>
+  data <- data |>
+    left_join(airport_bounds, by = "AIRPORT") |>
     mutate(
       ACCEPTED = case_when(
         is.na(DEV_MIN) ~ NA, # keep NA if no dev
@@ -505,7 +624,8 @@ if(!"ACCEPTED" %in% names(data)) {
     select(-p10, -p90)
 }
 
-if(is.logical(data$ACCEPTED)) data <- data |> mutate(ACCEPTED = as.integer(ACCEPTED))
+if (is.logical(data$ACCEPTED))
+  data <- data |> mutate(ACCEPTED = as.integer(ACCEPTED))
 
 # Descriptive summaries
 
@@ -521,12 +641,16 @@ summary_by_cdm <- data |>
     median_abs_dev = median(abs(DEV_MIN), na.rm = TRUE),
     accept_rate = mean(ACCEPTED, na.rm = TRUE),
     .groups = "drop"
-  ) |> arrange(CDM)
+  ) |>
+  arrange(CDM)
 
 summary_by_cdm |>
   select(CDM, n, mean_dev, median_dev, sd_dev, accept_rate) |>
   arrange(CDM, n, mean_dev, median_dev, sd_dev) |>
-  knitr::kable(digits = 2, caption = "Summary statistics by group (CDM vs non-CDM)")
+  knitr::kable(
+    digits = 2,
+    caption = "Summary statistics by group (CDM vs non-CDM)"
+  )
 
 
 write_csv(summary_by_cdm, "summary_by_cdm.csv")
@@ -535,7 +659,11 @@ write_csv(summary_by_cdm, "summary_by_cdm.csv")
 ggplot(data |> filter(!is.na(DEV_MIN)), aes(x = CDM, y = DEV_MIN)) +
   geom_violin(trim = TRUE) +
   geom_boxplot(width = 0.15, outlier.size = 0.8) +
-  labs(title = "Distribution of DEV_MIN by CDM status", y = "DEV_MIN (minutes)", x = "CDM") +
+  labs(
+    title = "Distribution of DEV_MIN by CDM status",
+    y = "DEV_MIN (minutes)",
+    x = "CDM"
+  ) +
   theme_minimal(base_size = 18)
 
 ggsave("DEV_min_dis.png", width = 16, height = 9, dpi = 600)
@@ -546,8 +674,13 @@ ggsave("DEV_min_dis.png", width = 16, height = 9, dpi = 600)
 shapiro_by_group <- data |>
   filter(!is.na(DEV_MIN)) |>
   group_by(CDM) |>
-  summarise(p_shapiro = tryCatch(shapiro.test(sample(DEV_MIN, min(length(DEV_MIN), 5000)))$p.value,
-                                 error = NA_real_), .groups = "drop")
+  summarise(
+    p_shapiro = tryCatch(
+      shapiro.test(sample(DEV_MIN, min(length(DEV_MIN), 5000)))$p.value,
+      error = NA_real_
+    ),
+    .groups = "drop"
+  )
 print(shapiro_by_group)
 write_csv(shapiro_by_group, "shapiro_devmin_by_cdm.csv")
 
@@ -562,8 +695,12 @@ wilcox_dev <- tryCatch(wilcox.test(dev_cdm, dev_noncdm), error = NULL)
 wilcox_dev
 
 # For absolute deviations (magnitude) - likely more relevant for "adherence"
-abs_dev_cdm <- data |> filter(!is.na(DEV_MIN), CDM == "CDM") |> pull(abs(DEV_MIN))
-abs_dev_noncdm <- data |> filter(!is.na(DEV_MIN), CDM == "non-CDM") |> pull(abs(DEV_MIN))
+abs_dev_cdm <- data |>
+  filter(!is.na(DEV_MIN), CDM == "CDM") |>
+  pull(abs(DEV_MIN))
+abs_dev_noncdm <- data |>
+  filter(!is.na(DEV_MIN), CDM == "non-CDM") |>
+  pull(abs(DEV_MIN))
 
 wilcox_abs <- tryCatch(wilcox.test(abs_dev_cdm, abs_dev_noncdm), error = NULL)
 
@@ -573,7 +710,11 @@ wilcox_abs
 prop_table <- data |>
   filter(!is.na(ACCEPTED)) |>
   group_by(CDM) |>
-  summarise(n = n(), accepted = sum(ACCEPTED, na.rm = TRUE), .groups = "drop") |>
+  summarise(
+    n = n(),
+    accepted = sum(ACCEPTED, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
   mutate(prop = accepted / n)
 prop_table
 # 2-sample proportion test
@@ -586,8 +727,10 @@ data_sel <- data |>
   filter(AIRPORT %in% selected_airports)
 
 # ANOVA: is 'airport' significant and does CDM explain variance?
-lm1 <- lm(DEV_MIN ~ CDM + AIRPORT + PHASE,
-          data = data_sel |> filter(!is.na(DEV_MIN)))
+lm1 <- lm(
+  DEV_MIN ~ CDM + AIRPORT + PHASE,
+  data = data_sel |> filter(!is.na(DEV_MIN))
+)
 summary(lm1)
 
 anova_lm1 <- anova(lm1)
@@ -597,8 +740,10 @@ anova_lm1
 
 #  Regression models
 # Linear regression predicting absolute deviation magnitude
-lm2 <- lm(abs(DEV_MIN) ~ CDM + PHASE + factor(hour(SLOT_TIME)) + RWY_TIME + AIRPORT,
-          data = data_sel |> filter(!is.na(DEV_MIN)))
+lm2 <- lm(
+  abs(DEV_MIN) ~ CDM + PHASE + factor(hour(SLOT_TIME)) + RWY_TIME + AIRPORT,
+  data = data_sel |> filter(!is.na(DEV_MIN))
+)
 summary(lm2)
 tidy(lm2) |> write_csv("lm_abs_dev_coefficients.csv")
 
@@ -611,11 +756,23 @@ log_data <- data_sel |>
     CDM = factor(CDM),
     AIRPORT = factor(AIRPORT)
   ) |>
-  select(ACCEPTED, CDM, PHASE, HOUR, RWY_TIME, DAY_OF_OPERATION, AIRPORT, DEV_MIN) |>
+  select(
+    ACCEPTED,
+    CDM,
+    PHASE,
+    HOUR,
+    RWY_TIME,
+    DAY_OF_OPERATION,
+    AIRPORT,
+    DEV_MIN
+  ) |>
   drop_na()
 
-glm1 <- glm(ACCEPTED ~ CDM + PHASE + HOUR + RWY_TIME,
-            data = log_data, family = binomial)
+glm1 <- glm(
+  ACCEPTED ~ CDM + PHASE + HOUR + RWY_TIME,
+  data = log_data,
+  family = binomial
+)
 summary(glm1)
 tidy(glm1) |> write_csv("glm_accepted_coeffs.csv")
 
@@ -644,7 +801,8 @@ clust_df <- data_sel |>
 
 clust_scaled <- clust_df |>
   dplyr::select(DEV_MIN, abs_dev, ACT_minus_BLOCK) |>
-  scale() |> as_tibble()
+  scale() |>
+  as_tibble()
 
 
 set.seed(42)
@@ -666,8 +824,12 @@ k_opt
 km_final <- kmeans(clust_scaled, centers = k_opt, nstart = 50)
 clust_df <- clust_df |> mutate(cluster = factor(km_final$cluster))
 
-fviz_cluster(list(data = clust_scaled, cluster = km_final$cluster), geom = "point") +
-  ggtitle(paste("K-means clusters (k =", k_opt, ")"))+theme_minimal(base_size = 18)
+fviz_cluster(
+  list(data = clust_scaled, cluster = km_final$cluster),
+  geom = "point"
+) +
+  ggtitle(paste("K-means clusters (k =", k_opt, ")")) +
+  theme_minimal(base_size = 18)
 
 ggsave("kmeans_clusters.png", width = 16, height = 9, dpi = 600)
 
@@ -680,7 +842,8 @@ outliers <- data_sel |>
     Q3 = quantile(DEV_MIN, 0.75, na.rm = TRUE),
     IQR = Q3 - Q1,
     outlier_IQR = (DEV_MIN < (Q1 - 1.5 * IQR)) | (DEV_MIN > (Q3 + 1.5 * IQR)),
-    outlier_MAD = abs(DEV_MIN - median(DEV_MIN, na.rm = TRUE)) > 3 * mad(DEV_MIN, na.rm = TRUE)
+    outlier_MAD = abs(DEV_MIN - median(DEV_MIN, na.rm = TRUE)) >
+      3 * mad(DEV_MIN, na.rm = TRUE)
   ) |>
   ungroup() |>
   filter(outlier_IQR | outlier_MAD) |>
@@ -701,20 +864,35 @@ rf_data <- data |>
     CDM = factor(CDM),
     AIRPORT = factor(AIRPORT)
   ) |>
-  dplyr::select(ACCEPTED, CDM, PHASE, HOUR, RWY_TIME, DEV_MIN, ACT_min, AIRPORT) |>
+  dplyr::select(
+    ACCEPTED,
+    CDM,
+    PHASE,
+    HOUR,
+    RWY_TIME,
+    DEV_MIN,
+    ACT_min,
+    AIRPORT
+  ) |>
   drop_na()
 
 # Train/Test Split (70/30)
 set.seed(123)
 train_index <- createDataPartition(rf_data$ACCEPTED, p = 0.7, list = FALSE)
 train_rf <- rf_data[train_index, ]
-test_rf  <- rf_data[-train_index, ]
+test_rf <- rf_data[-train_index, ]
 
 # caret expects "yes"/"no" factors for binary classification
 train_rf <- train_rf |>
-  mutate(ACCEPTED = if_else(ACCEPTED == "1", "yes", "no") |> factor(levels = c("no", "yes")))
+  mutate(
+    ACCEPTED = if_else(ACCEPTED == "1", "yes", "no") |>
+      factor(levels = c("no", "yes"))
+  )
 test_rf <- test_rf |>
-  mutate(ACCEPTED = if_else(ACCEPTED == "1", "yes", "no") |> factor(levels = c("no", "yes")))
+  mutate(
+    ACCEPTED = if_else(ACCEPTED == "1", "yes", "no") |>
+      factor(levels = c("no", "yes"))
+  )
 
 # Parallelization
 cl <- makeCluster(parallel::detectCores() - 1)
@@ -722,8 +900,8 @@ registerDoParallel(cl)
 
 # Control and Model Training
 control <- trainControl(
-  method = "cv",             # simpler, faster cross-validation
-  number = 3,                # 3-fold CV is fine for large datasets
+  method = "cv", # simpler, faster cross-validation
+  number = 3, # 3-fold CV is fine for large datasets
   classProbs = TRUE,
   summaryFunction = twoClassSummary,
   allowParallel = TRUE
@@ -799,10 +977,10 @@ cat("\nAUC =", round(auc_val, 3), "\n")
 # Interpretation / reporting helpers
 results_summary <- list(
   descriptive = summary_by_cdm,
-  t_test_dev = if(!is.null(t_test_dev)) tidy(t_test_dev) else NULL,
-  wilcox_dev = if(!is.null(wilcox_dev)) broom::tidy(wilcox_dev) else NULL,
-  t_test_abs = if(!is.null(t_test_abs)) tidy(t_test_abs) else NULL,
-  wilcox_abs = if(!is.null(wilcox_abs)) broom::tidy(wilcox_abs) else NULL,
+  t_test_dev = if (!is.null(t_test_dev)) tidy(t_test_dev) else NULL,
+  wilcox_dev = if (!is.null(wilcox_dev)) broom::tidy(wilcox_dev) else NULL,
+  t_test_abs = if (!is.null(t_test_abs)) tidy(t_test_abs) else NULL,
+  wilcox_abs = if (!is.null(wilcox_abs)) broom::tidy(wilcox_abs) else NULL,
   proportion_test = tidy(prop_test),
   anova = tidy(anova_lm1),
   lm_abs = tidy(lm2),
@@ -819,7 +997,12 @@ plot_df <- data |>
 
 # Histogram / density: adherence deviation distribution
 ggplot(plot_df, aes(x = DEV_MIN, fill = CDM)) +
-  geom_histogram(aes(y = ..density..), alpha = 0.5, position = "identity", bins = 80) +
+  geom_histogram(
+    aes(y = ..density..),
+    alpha = 0.5,
+    position = "identity",
+    bins = 80
+  ) +
   geom_density(alpha = 0.4, adjust = 1.2) +
   geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
   labs(
@@ -851,8 +1034,11 @@ accept_summary <- plot_df |>
 
 ggplot(accept_summary, aes(x = CDM, y = Acceptance_Rate, fill = CDM)) +
   geom_col(width = 0.6) +
-  geom_text(aes(label = percent(Acceptance_Rate, accuracy = 0.1)),
-            vjust = -0.3, size = 5) +
+  geom_text(
+    aes(label = percent(Acceptance_Rate, accuracy = 0.1)),
+    vjust = -0.3,
+    size = 5
+  ) +
   scale_y_continuous(labels = percent_format(accuracy = 1)) +
   labs(
     title = "Acceptance Rate (within operational buffer)",
@@ -874,4 +1060,7 @@ summary_plot_table <- plot_df |>
     Acceptance_Rate = round(mean(ACCEPTED, na.rm = TRUE) * 100, 1)
   )
 
-knitr::kable(summary_plot_table, caption = "Adherence Performance Summary by CDM Category")
+knitr::kable(
+  summary_plot_table,
+  caption = "Adherence Performance Summary by CDM Category"
+)
